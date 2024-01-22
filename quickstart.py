@@ -213,9 +213,10 @@ def main():
         l+=1
         r-=1
     print(bracket)
-    # print(average_placement)
-    # Generate standings
 
+    # TODO : write to google sheets the bracket
+    # TODO: generate top n most likely brackets?
+    # TODO: work on the randomness/simulation aspect, play w standard dev a bit.
 
 if __name__ == "__main__":
     main()
