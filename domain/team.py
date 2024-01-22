@@ -8,6 +8,7 @@ class Team():
         self.projected_points = 0
         self.wins = 0
         self.losses = 0
+        self.ties = 0
 
     # Helper methods for filling out roster
     def set_qb(self, qb):
@@ -25,6 +26,8 @@ class Team():
     
     def get_weekly_score(self):
         return self.projected_points // 15
+        
+    # Could store head to head for tie breaking, but in fantasy we do points for.
 
     def win(self, points):
         self.wins+=1
@@ -33,3 +36,8 @@ class Team():
     def lose(self, points):
         self.losses+=1
         self.points_for += points
+    def tie(self, points):
+        self.ties+=1
+        self.points_for += points
+    def get_record(self):
+        return [self.wins, self.losses, self.ties, self.points_for]
