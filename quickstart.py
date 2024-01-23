@@ -1,7 +1,7 @@
-import enum
 import heapq
 import json
 import os.path
+from uuid import uuid4
 import requests
 import numpy
 from bs4 import BeautifulSoup
@@ -15,7 +15,7 @@ from domain.team import Team
 from domain.player import Player
 
 # If modifying these scopes, delete the file token.json.
-SCOPES = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
+SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 
 # The ID and range of a sample spreadsheet.
 TEAMS_SHEET = "1GzkNwRVeWhWKO1aT_gKqCnGgJOfAYRYSnWIubEfJ4hE"
@@ -26,6 +26,7 @@ SHEETS_AND_RANGES = ["Team 1!A2:E", "Team 2!A2:E", "Team 3!A2:E", "Team 4!A2:E",
 def main():
     # Generate player table
     player_table = {}
+    print("Scraping PFR to generate fantasy stats for all players")
     URL = "https://www.pro-football-reference.com/years/2023/fantasy.htm"
     page = requests.get(URL)
 
@@ -71,6 +72,7 @@ def main():
 
         # Next, grab all the teams from our league, and initialize the teams, with totals
         sheet = service.spreadsheets()
+        print("----Generating teams----")
         for i, s in enumerate(SHEETS_AND_RANGES):
             team_num = i + 1
             result = (
@@ -88,38 +90,32 @@ def main():
             new_team = Team(str(team_num))
             for row in values:
                 name = row[1]
+                position = row[2]
+                print(name, position)
                 player = player_table[name]
-                if player.is_qb():
+                if position=='QB':
                     new_team.set_qb(player)
-                if player.is_rb():
+                if position=='RB':
                     new_team.add_rb(player)
-                if player.is_wr():
+                if position=='WR':
                     new_team.add_wr(player)
-                if player.is_flex():
+                if position=='FLEX':
                     new_team.set_flex(player)
+                    print('flex')
             league[new_team.name] = new_team
-        print("League generated!")
+            print(new_team.print_roster())
+        print("League generated with " + str(len(league)) + " teams!")
+        print("-----------------------------------------------")
     except HttpError as err:
         print(err)
-    
+
     settings = {}
     with open('settings.json', 'r') as f:
         settings = json.load(f)
-    # Exception handling if bad json in settings
-
-    """
-    Define the input
-    Choose a probability distribution
-    Simulate the input by sampling from the probability distribution
-    Perform a deterministic calculation of the simulated input
-    Summarize the results
-    """
     num_simulations = settings['num_simulations']  # need to grab from settings.json
-    avg = settings['avg'] 
+    avg = settings['avg']
     std_dev = settings['std_dev'] / float(10)
     num_teams = 12
-    # for _ in range(num_simulations):
-
 
     schedule = {}
     # TODO: randomize this somehow?
@@ -141,17 +137,21 @@ def main():
     # TODO: Refactor this to fit with league settings, add wins/losses, points for.
     # Simulate a season
     average_placement = [0 for _ in range(12)]
+    print("Running sim")
+    print("-----------------------------------------------")
     for _ in range(num_simulations):
         for week in range(1, 16):
             this_weeks_schedule = schedule[week]
             # print("week", week)
             # print("schedy", this_weeks_schedule)
-            percent_projections_for_teams = abs(numpy.random.normal(avg, std_dev, num_teams).round(2))
+            percent_projections_for_teams = abs(
+                numpy.random.normal(avg, std_dev, num_teams).round(2))
             # print('%', percent_projections_for_teams)
             team_totals = [0]
             for i, p in enumerate(percent_projections_for_teams):
                 weekly_avg = league[str(i+1)].get_weekly_score()
-                team_totals.append(weekly_avg * percent_projections_for_teams[i])
+                team_totals.append(
+                    weekly_avg * percent_projections_for_teams[i])
             # print(team_totals)
             for matchup in this_weeks_schedule:
                 # print("matchy", matchup)
@@ -173,7 +173,7 @@ def main():
                     # print(away, " wins")
                     league[away_name].win(away_score)
                     league[home_name].lose(home_score)
-            
+
         standings = []
 
         # win = 1000 points
@@ -181,22 +181,19 @@ def main():
             team = league[team_name]
             wins = team.wins
             total_points = wins * 1000 + team.points_for
-            # print(total_points)
             heapq.heappush(standings, (-total_points, team_name))
-            # print(standings)
 
         final_standings = []
         place = 1
         while standings:
             cur = heapq.heappop(standings)
-            # print(cur)
             final_standings.append(cur[1])
             average_placement[int(int(cur[1]) - 1)] += place
-            place +=1
+            place += 1
+    print("Sim complete")
     final_standings = []
     for i, p in enumerate(average_placement):
         average_placement[i] = p / 1000
-    print(average_placement)
     final_final = []
     for i, p in enumerate(average_placement):
         heapq.heappush(final_final, (p, i))
@@ -205,19 +202,56 @@ def main():
     THE_FINAL_STANDINGS = []
     for i, t in enumerate(final_final):
         THE_FINAL_STANDINGS.append(t[1]+1)
-    print(THE_FINAL_STANDINGS)
+    print("-----------------------------------------------")
+    print("Final projected standings:")
+    for i, team in enumerate(THE_FINAL_STANDINGS):
+        print("#" + str(i+1) + ": Team ", str(team))
+    print("-----------------------------------------------")
     l = 0
     r = 11
     bracket = []
     while l < r:
         bracket.append([THE_FINAL_STANDINGS[l], THE_FINAL_STANDINGS[r]])
-        l+=1
-        r-=1
-    print(bracket)
+        l += 1
+        r -= 1
 
-    # TODO : write to google sheets the bracket
+    # Write the bracket
+    try:
+        service = build("sheets", "v4", credentials=creds)
+        bracket_name = "Projected Bracket " + str(uuid4())
+        body = {
+            "requests": {
+                "addSheet": {
+                    "properties": {
+                        "title": bracket_name
+                    }
+                }
+            }
+        }
+        service.spreadsheets().batchUpdate(spreadsheetId=TEAMS_SHEET, body=body).execute()
+        ranges = bracket_name + "!A1:B8"
+        values = [["Home", "Away"], bracket[0], bracket[1],
+                  bracket[2], bracket[3], bracket[4], bracket[5]]
+        body = {"values": values}
+        result = (
+            service.spreadsheets()
+            .values()
+            .update(
+                spreadsheetId=TEAMS_SHEET,
+                range=ranges,
+                valueInputOption="USER_ENTERED",
+                body=body,
+            )
+            .execute()
+        )
+        print("Wrote bracket to sheet: ", bracket_name)
+
+    except HttpError as error:
+        print(f"An error occurred: {error}")
+
     # TODO: generate top n most likely brackets?
     # TODO: work on the randomness/simulation aspect, play w standard dev a bit.
+
 
 if __name__ == "__main__":
     main()

@@ -32,7 +32,6 @@ class Team():
     def win(self, points):
         self.wins+=1
         self.points_for += points
-
     def lose(self, points):
         self.losses+=1
         self.points_for += points
@@ -41,3 +40,9 @@ class Team():
         self.points_for += points
     def get_record(self):
         return [self.wins, self.losses, self.ties, self.points_for]
+    
+    def print_roster(self):
+        return ("Team " + str(self.name) + "\nQB: " + self.qb.name + "\n"
+        + "RBs: " + self.rbs[0].name + " & " + self.rbs[1].name + "\n"
+        + "WRs: " + self.wrs[0].name + " & " + self.wrs[1].name + "\n"
+        + "Flex: " + self.flex.name)
